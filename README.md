@@ -4,11 +4,12 @@ A small smart grow light for houseplants: a 24-LED WS2812B ring, an ESP32-C3 Sup
 [ESPHome](https://esphome.io) firmware. It works on its own, with its own web page and a built-in
 day/night schedule. Home Assistant is optional; if you use it, it finds the lamp automatically.
 
-![PlantRing grow light above a houseplant](docs/images/plantring.jpg)
-
 *Photos will be added soon.*
 
-<!-- TODO(author): save the photo as docs/images/plantring.jpg (it shows up above automatically), then delete the "Photos will be added soon" line. -->
+<!-- TODO(author): when the photo exists as docs/images/plantring.jpg, replace the "Photos will be added soon" line with:
+![PlantRing grow light above a houseplant](docs/images/plantring.jpg) -->
+
+
 
 The 3D-printable holder is published on MakerWorld (link will be added here).
 <!-- TODO(author): add the MakerWorld link to the line above. -->
