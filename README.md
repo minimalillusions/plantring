@@ -4,11 +4,9 @@ A small smart grow light for houseplants: a 24-LED WS2812B ring, an ESP32-C3 Sup
 [ESPHome](https://esphome.io) firmware. It works on its own, with its own web page and a built-in
 day/night schedule. Home Assistant is optional; if you use it, it finds the lamp automatically.
 
-*Photos will be added soon.*
-
-<!-- TODO(author): when the photo exists as docs/images/plantring.jpg, replace the "Photos will be added soon" line with:
-![PlantRing grow light above a houseplant](docs/images/plantring.jpg) -->
-
+<p align="center">
+  <img src="static/images/plantring.jpg" alt="PlantRing: a 3D-printed arm lamp with the LED ring, lighting a chili plant" width="420">
+</p>
 
 
 The 3D-printable holder is published on MakerWorld (link will be added here).
@@ -35,13 +33,18 @@ The 3D-printable holder is published on MakerWorld (link will be added here).
 
 | Qty | Part | Notes |
 |---:|---|---|
-| 1 | ESP32-C3 SuperMini | The small board with USB-C and a blue onboard LED. 2.4 GHz WiFi only. |
-| 1 | WS2812B LED ring, 24 LEDs | 5 V type, with pads for 5V, GND, DIN (data in) and DOUT. |
+| 1 | ESP32-C3 SuperMini | The small board with USB-C and a blue onboard LED (the one in the photos is marked HW-466AB). 2.4 GHz WiFi only. |
+| 1 | WS2812B LED ring, 24 LEDs | 86 mm, 5 V type, with pads for 5V, GND, DIN (data in) and DOUT. |
 | 1 | USB-C **data** cable | Must carry data, not only charge. You need it for the first install. |
 | 1 | USB charger, 5 V, at least 1 A | 2 A is recommended. A decent phone charger is fine. |
 | 3 | Short wires | For 5V, GND and data. |
-| 1 | 330 Ω resistor (optional, recommended) | Goes in the data wire and makes the signal more robust. |
+| 1 | 330 Ω resistor (optional) | Goes in the data wire and makes the signal more robust. The lamp in the photos works fine without it. |
+| 1 pair | 3-pin JST-SM connector cables (optional) | Make the ring detachable from the board. The wires double as the three short wires. |
 | 1 | 3D-printed holder | From MakerWorld (see above). |
+
+<p align="center">
+  <img src="static/images/parts.jpg" alt="Parts: 24-LED WS2812B ring, ESP32-C3 SuperMini and a pair of 3-pin JST-SM connector cables" width="560">
+</p>
 
 Tools: a soldering iron and solder, plus heat-shrink tubing or tape to insulate the joints.
 
@@ -70,6 +73,13 @@ There are only three wires. The ring gets its power **through the board**, strai
   |                     |      (optional)      |    DOUT: not connected |
   +---------------------+                      +------------------------+
 ```
+
+<p align="center">
+  <img src="static/images/wiring-board.jpg" alt="Board side: red wire on 5V, green wire on G (GND), white wire on 4 (GPIO4)" width="360">
+  <img src="static/images/wiring-ring.jpg" alt="Ring side: white wire on DI, red wire on 5V, green wire on GND; DO stays free" width="360">
+</p>
+
+*In the photos: red = 5V, green = GND, white = data (board pin `4` to ring pad `DI`). The `DO` pad stays free.*
 
 Good to know:
 
@@ -458,7 +468,7 @@ waits for a new WiFi setup. Or reinstall with the installer: for a new installat
 | `plantring.factory.yaml` | What the web installer installs: `plantring.yaml` plus WiFi setup over USB and Bluetooth (Improv), the **Firmware** update check and the link back to this repository for the Device Builder. |
 | `.github/workflows/` | GitHub Actions that build the firmware and publish the installer page to GitHub Pages. Release binaries are attached to [GitHub Releases](https://github.com/minimalillusions/plantring/releases). |
 | `static/index.html` | The web installer page. It's published on GitHub Pages together with the firmware. |
-| `docs/` | The text for the MakerWorld listing ([docs/makerworld.md](docs/makerworld.md)). Photos will go in `docs/images/`. |
+| `static/images/` | The photos used in this README and on the installer page. |
 
 Built with [ESPHome](https://esphome.io) and [ESP Web Tools](https://esphome.github.io/esp-web-tools/).
 
@@ -478,4 +488,4 @@ One-time setup: **Settings → Pages → Build and deployment → Source: GitHub
 ## License
 
 [MIT](LICENSE). This covers the firmware configuration, the installer and the documentation in this repository.
-The 3D model on MakerWorld is published there under the license shown on its MakerWorld page.
+The 3D model on MakerWorld is licensed under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/).

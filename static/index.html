@@ -222,6 +222,9 @@
     @media (prefers-reduced-motion: reduce) {
       .btn:active { transform: none; }
     }
+    .photo { margin: 1.25rem 0 0; }
+    .photo img { display: block; width: 100%; max-width: 320px; height: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+    .photo figcaption { margin-top: .4rem; font-size: .875rem; color: var(--muted); }
   </style>
   <script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
 </head>
@@ -264,6 +267,10 @@
     </svg>
     <h1>PlantRing — Grow Light Installer</h1>
     <p class="lead">PlantRing is a small grow light for houseplants: a ring of 24 LEDs on an ESP32-C3 SuperMini, running ESPHome. It works on its own, with its own web page and a daily light schedule, and Home Assistant picks it up automatically if you use it. This page installs the firmware straight from your browser, with nothing to download and nothing to compile.</p>
+    <figure class="photo">
+      <img src="images/plantring.jpg" width="900" height="1600" alt="PlantRing: a 3D-printed arm lamp with the LED ring, lighting a chili plant">
+      <figcaption>PlantRing above a chili plant.</figcaption>
+    </figure>
   </header>
 
   <main class="wrap">
