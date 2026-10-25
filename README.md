@@ -9,8 +9,7 @@ day/night schedule. Home Assistant is optional; if you use it, it finds the lamp
 </p>
 
 
-The 3D-printable holder is published on MakerWorld (link will be added here).
-<!-- TODO(author): add the MakerWorld link to the line above. -->
+The 3D-printable holder is published on <a href="https://makerworld.com/de/models/3494559-plantring-smart-grow-light-ring-for-houseplants" target="_blank">MakerWorld</a>.
 
 **Install the firmware from your browser:** <https://minimalillusions.github.io/plantring/>
 
