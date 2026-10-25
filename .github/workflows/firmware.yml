@@ -1,0 +1,74 @@
+name: Firmware
+
+# Reusable workflow: the one place that defines how the PlantRing firmware is built.
+# It is called by:
+#   build.yml          pull requests (compile check only)
+#   publish-pages.yml  pushes to main (firmware served by the web installer)
+#   release.yml        published releases (firmware attached to the release)
+#
+# Version: the firmware reports `project_version` from the substitutions in
+# plantring.yaml (plantring.factory.yaml may override it). That value is passed to
+# the official ESPHome build as `release-version`, which also replaces a template
+# style `version: dev` placeholder in plantring.factory.yaml if there is one.
+# Devices compare their own version with the one in firmware/manifest.json and only
+# offer an update when the two differ: bump project_version to roll out a change.
+#
+# Result: one workflow artifact named after the device (`plantring`):
+#   plantring/<version>/plantring-esp32c3.factory.bin  first install over USB
+#   plantring/<version>/plantring-esp32c3.ota.bin      over-the-air update image
+#   plantring/<version>/plantring-esp32c3.elf          debug symbols
+#   plantring/<version>/manifest.json                  ESP Web Tools and update manifest
+
+on:
+  workflow_call:
+    outputs:
+      version:
+        description: Firmware version (substitutions.project_version)
+        value: ${{ jobs.version.outputs.version }}
+
+jobs:
+  version:
+    name: Read firmware version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read project_version
+        id: read
+        run: |
+          set -euo pipefail
+          # Substitutions in the main file win over the ones from its packages,
+          # so look in the factory file first and fall back to the core config.
+          version=$(yq -r '.substitutions.project_version // ""' plantring.factory.yaml)
+          if [[ -z "${version}" ]]; then
+            version=$(yq -r '.substitutions.project_version // ""' plantring.yaml)
+          fi
+          # Plain version strings only (1.0.0, 1.1.0-beta.1, ...): the value ends up
+          # in file paths and in the update check on every device.
+          if [[ ! "${version}" =~ ^[0-9A-Za-z][0-9A-Za-z._+-]*$ ]]; then
+            echo "::error file=plantring.yaml::Set substitutions.project_version to a plain version such as \"1.0.0\" (found \"${version}\")."
+            exit 1
+          fi
+          echo "Firmware version: ${version}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build
+    needs: version
+    permissions:
+      contents: read
+    uses: esphome/workflows/.github/workflows/build.yml@31d160e5f0ffa0ee65d5b27cb55c153d415f2abe  # 2026.10.2
+    with:
+      # The image the web installer flashes: core config plus Wi-Fi provisioning.
+      files: plantring.factory.yaml
+      # ESPHome release used for every build. Update it deliberately: the
+      # min_version in plantring.yaml and plantring.factory.yaml must not be newer.
+      esphome-version: "2026.10.0"
+      release-version: ${{ needs.version.outputs.version }}

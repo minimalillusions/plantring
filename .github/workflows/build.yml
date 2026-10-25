@@ -1,0 +1,25 @@
+name: Build
+
+# Compile check for pull requests, and on demand from the Actions tab.
+# Nothing is published; the built firmware stays attached to the run as an artifact.
+
+on:
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  firmware:
+    name: Firmware
+    permissions:
+      contents: read
+    uses: ./.github/workflows/firmware.yml

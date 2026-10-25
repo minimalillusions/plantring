@@ -1,0 +1,517 @@
+# =============================================================================
+#  PlantRing - a small smart grow light for houseplants
+#  https://github.com/minimalillusions/plantring
+#
+#  ESPHome firmware for an ESP32-C3 SuperMini driving a 24-LED WS2812B ring.
+#  The ring works on its own: it has its own web page and its own light
+#  schedule. Home Assistant is optional and finds the ring automatically.
+#
+#  This is the core configuration. The web installer flashes
+#  plantring.factory.yaml, which includes this file and adds WiFi setup
+#  over USB/Bluetooth and firmware updates from GitHub.
+#
+#  Want to change something? Adopt the ring in the ESPHome Device Builder
+#  and override the values under "substitutions" in your own copy.
+#  Tested with ESPHome 2026.10.0.
+# =============================================================================
+
+substitutions:
+  # Name on your network. The end of the MAC address is added automatically,
+  # e.g. plantring-1a2b3c.local, so several rings never collide.
+  name: plantring
+  # Name shown on the web page and in Home Assistant.
+  friendly_name: PlantRing
+  # GPIO pin connected to the ring's data input (DIN).
+  led_pin: GPIO4
+  # Number of LEDs on the ring.
+  num_leds: "24"
+  # Maximum output per colour channel: the power cap (explained at the light
+  # below). Keep 80% when the ring is powered through the board's 5V pin.
+  # Only raise it to 100% if the ring gets 5 V DIRECTLY from a power supply.
+  max_power: 80%
+  # Many ESP32-C3 SuperMini boards connect unreliably at full WiFi power.
+  wifi_output_power: 8.5dB
+  # Firmware version, shown on the web page and in Home Assistant. Raise it
+  # (e.g. to "1.1.0") to publish an update: GitHub builds the new firmware,
+  # and rings running an older version offer it as "Firmware" update.
+  project_version: "1.0.0"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  # Adds the end of the MAC address to the name (plantring-1a2b3c), so one
+  # firmware works for every ring and they don't get in each other's way.
+  name_add_mac_suffix: true
+  # Needed for "channel_colors" and the runtime timezone code below.
+  min_version: 2026.8.0
+  project:
+    name: "minimalillusions.plantring"
+    version: ${project_version}
+  on_boot:
+    # -100 = after everything else has started (light, settings, timezone).
+    priority: -100
+    then:
+      # From now on the schedule may switch the light.
+      - lambda: 'id(boot_done) = true;'
+      - script.execute: apply_timezone
+      - component.update: photoperiod
+
+esp32:
+  board: esp32-c3-devkitm-1
+  variant: esp32c3
+  framework:
+    type: esp-idf
+
+# Logs go over the board's own USB port (the SuperMini has no USB-serial chip).
+logger:
+  hardware_uart: USB_SERIAL_JTAG
+
+# -----------------------------------------------------------------------------
+#  Network
+# -----------------------------------------------------------------------------
+
+wifi:
+  # No WiFi name or password in the firmware: you enter them while installing,
+  # over Bluetooth, or on the fallback hotspot below.
+  output_power: ${wifi_output_power}
+  # Keep the light and its schedule running while the router is down.
+  # (ESPHome's default would reboot the ring after 15 minutes without WiFi.)
+  reboot_timeout: 0s
+  # Fallback hotspot named like the ring (e.g. "plantring-1a2b3c"). It opens
+  # when no known WiFi is in reach. Join it and a page asks for your WiFi.
+  # Note: the ESP32-C3 only supports 2.4 GHz WiFi.
+  ap:
+
+# The WiFi setup page you see when you join the fallback hotspot.
+captive_portal:
+
+# Home Assistant API. Home Assistant discovers the ring and adds it in one
+# click (no encryption key; adopting it in the ESPHome Device Builder adds one).
+api:
+  # Home Assistant is optional, so don't restart when nothing connects.
+  # (ESPHome's default would reboot the ring every 15 minutes.)
+  reboot_timeout: 0s
+
+# Firmware updates over WiFi: from the ESPHome Device Builder ("esphome"),
+# and by uploading a firmware file (.ota.bin) in the "OTA Update" section
+# of the ring's web page ("web_server").
+ota:
+  - platform: esphome
+  - platform: web_server
+
+# The ring's own web page: http://plantring-xxxxxx.local or its IP address.
+# Anyone on your home network can open it (for a password, see "auth" in
+# the ESPHome web_server documentation).
+web_server:
+  port: 80
+  version: 3
+  # Serve the page's scripts from the ring itself, so it works without internet.
+  local: true
+  # Sections of the web page.
+  sorting_groups:
+    - id: group_light
+      name: "Light"
+      sorting_weight: 10
+    - id: group_schedule
+      name: "Schedule"
+      sorting_weight: 20
+    - id: group_device
+      name: "Device"
+      sorting_weight: 30
+
+# The SuperMini's small blue LED (GPIO8, lit when the pin is LOW) shows the
+# status: blinking = no WiFi yet / problem, off = all good.
+status_led:
+  pin:
+    number: GPIO8
+    inverted: true
+    # GPIO8 is a boot-mode (strapping) pin. Driving the on-board LED after
+    # boot is fine, so the warning about it can be ignored.
+    ignore_strapping_warning: true
+
+# -----------------------------------------------------------------------------
+#  The LED ring
+# -----------------------------------------------------------------------------
+
+light:
+  - platform: esp32_rmt_led_strip
+    id: ring
+    name: "Light"
+    icon: mdi:sprout
+    pin: ${led_pin}
+    num_leds: ${num_leds}
+    chipset: WS2812
+    # WS2812B LEDs expect green, red, blue (formerly "rgb_order: GRB").
+    channel_colors: GRB
+    # Power cap. The ring is powered through the board, and full white on
+    # 24 LEDs would draw about 1.44 A - too much for the board's 5V pin.
+    # ESPHome first scales each colour channel to max_power and then applies
+    # its gamma curve (2.8). So 80% means at most 0.8^2.8 = 54% per channel:
+    # about 0.77 A in full white, about 0.51 A with red + blue only.
+    # The brightness slider still feels natural from 0 to 100%.
+    # (One value each for red, green and blue. Written as a list on separate
+    # lines because "[${max_power}, ...]" in square brackets is not valid YAML.)
+    color_correct:
+      - ${max_power}
+      - ${max_power}
+      - ${max_power}
+    # Remember colour and brightness across power cuts, but always start OFF:
+    # the schedule switches the light on once the ring knows the time.
+    restore_mode: RESTORE_AND_OFF
+    default_transition_length: 1s
+    # A few effects for fun. For plants, a steady colour is best.
+    effects:
+      - addressable_rainbow:
+          name: "Rainbow"
+      - addressable_color_wipe:
+          name: "Color Wipe"
+      - addressable_twinkle:
+          name: "Twinkle"
+      - pulse:
+          name: "Pulse"
+    web_server: {sorting_group_id: group_light, sorting_weight: 10}
+
+# -----------------------------------------------------------------------------
+#  Buttons: light presets and device actions
+# -----------------------------------------------------------------------------
+
+button:
+  # Presets change the colour only; your brightness stays as it is.
+  # Plants use mostly red and blue light and reflect most of the green
+  # (that's why leaves look green). Red + blue also draws less power than
+  # white, but looks purple in a living room. "Full spectrum" looks normal.
+  - platform: template
+    name: "Preset: Vegetative"
+    icon: mdi:leaf
+    on_press:
+      - light.turn_on:
+          id: ring
+          # Blue-rich, for leafy growth. RGB (200, 0, 255).
+          red: 78%
+          green: 0%
+          blue: 100%
+          effect: "None"
+    web_server: {sorting_group_id: group_light, sorting_weight: 20}
+
+  - platform: template
+    name: "Preset: Bloom"
+    icon: mdi:flower
+    on_press:
+      - light.turn_on:
+          id: ring
+          # Red-rich, for flowers and fruit. RGB (255, 0, 120).
+          red: 100%
+          green: 0%
+          blue: 47%
+          effect: "None"
+    web_server: {sorting_group_id: group_light, sorting_weight: 21}
+
+  - platform: template
+    name: "Preset: Full spectrum"
+    icon: mdi:white-balance-sunny
+    on_press:
+      - light.turn_on:
+          id: ring
+          # White. RGB (255, 255, 255).
+          red: 100%
+          green: 100%
+          blue: 100%
+          effect: "None"
+    web_server: {sorting_group_id: group_light, sorting_weight: 22}
+
+  - platform: restart
+    name: "Restart"
+    web_server: {sorting_group_id: group_device, sorting_weight: 40}
+
+  # Erases EVERYTHING the ring has stored - including your WiFi name and
+  # password, the schedule and the timezone - and restarts it. Afterwards the
+  # ring opens its fallback hotspot and needs to be set up again.
+  - platform: factory_reset
+    name: "Factory reset"
+    web_server: {sorting_group_id: group_device, sorting_weight: 50}
+
+# -----------------------------------------------------------------------------
+#  Light schedule (photoperiod) - runs on the ring itself, no Home Assistant
+#  needed. It only needs the current time from the internet (NTP).
+#
+#  The schedule switches the light only when it is time to change, e.g. on
+#  at 07:00 and off at 21:00. If you switch the light by hand in between,
+#  it stays that way until the next scheduled change.
+# -----------------------------------------------------------------------------
+
+time:
+  - platform: sntp
+    id: sntp_time
+    # Starting value only. The "Timezone" setting below takes over at boot.
+    timezone: Europe/Berlin
+    # Check the schedule as soon as the ring knows the time...
+    on_time_sync:
+      - script.execute: schedule_check
+    # ...and then twice a minute.
+    on_time:
+      - seconds: /30
+        then:
+          - script.execute: schedule_check
+
+switch:
+  # Turn the automatic schedule on or off.
+  - platform: template
+    id: schedule_enabled
+    name: "Schedule"
+    icon: mdi:calendar-clock
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    turn_on_action:
+      # Forget the last state, so the light follows the schedule right away.
+      - lambda: 'id(schedule_last_state) = -1;'
+      - script.execute: schedule_check
+    web_server: {sorting_group_id: group_schedule, sorting_weight: 10}
+
+datetime:
+  - platform: template
+    id: lights_on
+    type: time
+    name: "Lights on"
+    icon: mdi:weather-sunset-up
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: "07:00"
+    on_value:
+      - script.execute: schedule_check
+      - component.update: photoperiod
+    web_server: {sorting_group_id: group_schedule, sorting_weight: 20}
+
+  # May be earlier than "Lights on" for a light period across midnight,
+  # e.g. on 20:00, off 06:00.
+  - platform: template
+    id: lights_off
+    type: time
+    name: "Lights off"
+    icon: mdi:weather-sunset-down
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: "21:00"
+    on_value:
+      - script.execute: schedule_check
+      - component.update: photoperiod
+    web_server: {sorting_group_id: group_schedule, sorting_weight: 30}
+
+select:
+  # Your local timezone (needed for the schedule). If your city is not listed,
+  # pick one with the same local time and daylight saving rules.
+  # To add a zone: add its name here AND a line in "apply_timezone" below.
+  - platform: template
+    id: timezone_select
+    name: "Timezone"
+    icon: mdi:earth
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_option: "Europe/Berlin"
+    options:
+      - "Africa/Johannesburg"
+      - "America/Anchorage"
+      - "America/Chicago"
+      - "America/Denver"
+      - "America/Los_Angeles"
+      - "America/Mexico_City"
+      - "America/New_York"
+      - "America/Phoenix"
+      - "America/Sao_Paulo"
+      - "Asia/Bangkok"
+      - "Asia/Dubai"
+      - "Asia/Kolkata"
+      - "Asia/Shanghai"
+      - "Asia/Singapore"
+      - "Asia/Tokyo"
+      - "Australia/Brisbane"
+      - "Australia/Perth"
+      - "Australia/Sydney"
+      - "Europe/Athens"
+      - "Europe/Berlin"
+      - "Europe/Istanbul"
+      - "Europe/Lisbon"
+      - "Europe/London"
+      - "Europe/Moscow"
+      - "Europe/Paris"
+      - "Pacific/Auckland"
+      - "Pacific/Honolulu"
+      - "UTC"
+    on_value:
+      - script.execute: apply_timezone
+    web_server: {sorting_group_id: group_schedule, sorting_weight: 50}
+
+globals:
+  # What the schedule wanted at its last check:
+  # -1 = not known yet (after boot), 0 = off, 1 = on.
+  - id: schedule_last_state
+    type: int
+    restore_value: false
+    initial_value: "-1"
+  # Becomes true at the end of start-up (see "on_boot"). After a restart the
+  # clock may already be valid, so this stops the schedule from acting before
+  # the light and the saved timezone are ready.
+  - id: boot_done
+    type: bool
+    restore_value: false
+    initial_value: "false"
+
+script:
+  # Applies the zone chosen in "Timezone".
+  # ESPHome stores a timezone as an already-parsed POSIX TZ rule (it does not
+  # parse TZ strings on the device), so every zone is written out as numbers.
+  # The comment at the end of each line shows the matching POSIX TZ string.
+  - id: apply_timezone
+    then:
+      - lambda: |-
+          // std / dst: offset from UTC in minutes, EAST positive (UTC+1 = 60).
+          // DST start / end: month, week of the month (5 = last), weekday
+          // (0 = Sunday), local hour of the change.
+          // Zones without daylight saving time have 0 in all DST columns.
+          struct Zone {
+            const char *name;
+            int16_t std_min, dst_min;
+            uint8_t start_month, start_week, start_day, start_hour;
+            uint8_t end_month, end_week, end_day, end_hour;
+          };
+          static const Zone ZONES[] = {
+            // name                  std   dst   DST start      DST end       POSIX TZ
+            {"Africa/Johannesburg",   120,    0,  0, 0, 0, 0,    0, 0, 0, 0},  // SAST-2
+            {"America/Anchorage",    -540, -480,  3, 2, 0, 2,   11, 1, 0, 2},  // AKST9AKDT,M3.2.0,M11.1.0
+            {"America/Chicago",      -360, -300,  3, 2, 0, 2,   11, 1, 0, 2},  // CST6CDT,M3.2.0,M11.1.0
+            {"America/Denver",       -420, -360,  3, 2, 0, 2,   11, 1, 0, 2},  // MST7MDT,M3.2.0,M11.1.0
+            {"America/Los_Angeles",  -480, -420,  3, 2, 0, 2,   11, 1, 0, 2},  // PST8PDT,M3.2.0,M11.1.0
+            {"America/Mexico_City",  -360,    0,  0, 0, 0, 0,    0, 0, 0, 0},  // CST6
+            {"America/New_York",     -300, -240,  3, 2, 0, 2,   11, 1, 0, 2},  // EST5EDT,M3.2.0,M11.1.0
+            {"America/Phoenix",      -420,    0,  0, 0, 0, 0,    0, 0, 0, 0},  // MST7
+            {"America/Sao_Paulo",    -180,    0,  0, 0, 0, 0,    0, 0, 0, 0},  // <-03>3
+            {"Asia/Bangkok",          420,    0,  0, 0, 0, 0,    0, 0, 0, 0},  // <+07>-7
+            {"Asia/Dubai",            240,    0,  0, 0, 0, 0,    0, 0, 0, 0},  // <+04>-4
+            {"Asia/Kolkata",          330,    0,  0, 0, 0, 0,    0, 0, 0, 0},  // IST-5:30
+            {"Asia/Shanghai",         480,    0,  0, 0, 0, 0,    0, 0, 0, 0},  // CST-8
+            {"Asia/Singapore",        480,    0,  0, 0, 0, 0,    0, 0, 0, 0},  // <+08>-8
+            {"Asia/Tokyo",            540,    0,  0, 0, 0, 0,    0, 0, 0, 0},  // JST-9
+            {"Australia/Brisbane",    600,    0,  0, 0, 0, 0,    0, 0, 0, 0},  // AEST-10
+            {"Australia/Perth",       480,    0,  0, 0, 0, 0,    0, 0, 0, 0},  // AWST-8
+            {"Australia/Sydney",      600,  660, 10, 1, 0, 2,    4, 1, 0, 3},  // AEST-10AEDT,M10.1.0,M4.1.0/3
+            {"Europe/Athens",         120,  180,  3, 5, 0, 3,   10, 5, 0, 4},  // EET-2EEST,M3.5.0/3,M10.5.0/4
+            {"Europe/Berlin",          60,  120,  3, 5, 0, 2,   10, 5, 0, 3},  // CET-1CEST,M3.5.0,M10.5.0/3
+            {"Europe/Istanbul",       180,    0,  0, 0, 0, 0,    0, 0, 0, 0},  // <+03>-3
+            {"Europe/Lisbon",           0,   60,  3, 5, 0, 1,   10, 5, 0, 2},  // WET0WEST,M3.5.0/1,M10.5.0
+            {"Europe/London",           0,   60,  3, 5, 0, 1,   10, 5, 0, 2},  // GMT0BST,M3.5.0/1,M10.5.0
+            {"Europe/Moscow",         180,    0,  0, 0, 0, 0,    0, 0, 0, 0},  // MSK-3
+            {"Europe/Paris",           60,  120,  3, 5, 0, 2,   10, 5, 0, 3},  // CET-1CEST,M3.5.0,M10.5.0/3
+            {"Pacific/Auckland",      720,  780,  9, 5, 0, 2,    4, 1, 0, 3},  // NZST-12NZDT,M9.5.0,M4.1.0/3
+            {"Pacific/Honolulu",     -600,    0,  0, 0, 0, 0,    0, 0, 0, 0},  // HST10
+            {"UTC",                     0,    0,  0, 0, 0, 0,    0, 0, 0, 0},  // UTC0
+          };
+
+          const auto selected = id(timezone_select).current_option();
+          for (const auto &z : ZONES) {
+            if (selected != z.name)
+              continue;
+            esphome::time::ParsedTimezone tz{};
+            // ESPHome counts like POSIX: offsets WEST of UTC are positive.
+            tz.std_offset_seconds = -z.std_min * 60;
+            if (z.start_month != 0) {
+              tz.dst_offset_seconds = -z.dst_min * 60;
+              tz.dst_start.type = esphome::time::DSTRuleType::MONTH_WEEK_DAY;
+              tz.dst_start.month = z.start_month;
+              tz.dst_start.week = z.start_week;
+              tz.dst_start.day_of_week = z.start_day;
+              tz.dst_start.time_seconds = z.start_hour * 3600;
+              tz.dst_end.type = esphome::time::DSTRuleType::MONTH_WEEK_DAY;
+              tz.dst_end.month = z.end_month;
+              tz.dst_end.week = z.end_week;
+              tz.dst_end.day_of_week = z.end_day;
+              tz.dst_end.time_seconds = z.end_hour * 3600;
+            }
+            esphome::time::set_global_tz(tz);
+            ESP_LOGI("plantring", "Timezone set to %s", z.name);
+            return;
+          }
+          ESP_LOGW("plantring", "Unknown timezone '%s', keeping the previous one",
+                   selected.str().c_str());
+      # The local time may have changed, so check the schedule again.
+      - script.execute: schedule_check
+
+  # Switches the light when the schedule says it is time to change.
+  - id: schedule_check
+    then:
+      - lambda: |-
+          // Only after start-up, while the schedule is on, and only once the
+          // ring knows the time.
+          if (!id(boot_done) || !id(schedule_enabled).state)
+            return;
+          const auto now = id(sntp_time).now();
+          if (!now.is_valid())
+            return;
+
+          // All times in minutes since midnight.
+          const int on = id(lights_on).hour * 60 + id(lights_on).minute;
+          const int off = id(lights_off).hour * 60 + id(lights_off).minute;
+          const int t = now.hour * 60 + now.minute;
+
+          bool should_be_on;
+          if (on < off) {
+            should_be_on = t >= on && t < off;  // e.g. 07:00 to 21:00
+          } else if (on > off) {
+            should_be_on = t >= on || t < off;  // across midnight, e.g. 20:00 to 06:00
+          } else {
+            should_be_on = false;               // same time: no light period
+          }
+
+          // Act only when the wanted state changes. A light you switched by
+          // hand stays that way until the next scheduled change.
+          const int wanted = should_be_on ? 1 : 0;
+          if (wanted == id(schedule_last_state))
+            return;
+          id(schedule_last_state) = wanted;
+
+          ESP_LOGI("plantring", "Schedule: lights %s", should_be_on ? "on" : "off");
+          auto call = should_be_on ? id(ring).turn_on() : id(ring).turn_off();
+          call.perform();
+
+text_sensor:
+  # Shows the length of day and night, e.g. "14 h light / 10 h dark".
+  - platform: template
+    id: photoperiod
+    name: "Photoperiod"
+    icon: mdi:theme-light-dark
+    # Updated whenever "Lights on" or "Lights off" changes.
+    update_interval: never
+    lambda: |-
+      const int on = id(lights_on).hour * 60 + id(lights_on).minute;
+      const int off = id(lights_off).hour * 60 + id(lights_off).minute;
+      const int light = (off - on + 1440) % 1440;  // minutes of light per day
+      const int dark = 1440 - light;
+      // "14 h" or "13 h 30 min"
+      auto format = [](int minutes) {
+        char buf[16];
+        if (minutes % 60 == 0)
+          snprintf(buf, sizeof(buf), "%d h", minutes / 60);
+        else
+          snprintf(buf, sizeof(buf), "%d h %d min", minutes / 60, minutes % 60);
+        return std::string(buf);
+      };
+      return format(light) + " light / " + format(dark) + " dark";
+    web_server: {sorting_group_id: group_schedule, sorting_weight: 40}
+
+  # The ring's IP address (handy if plantring-xxxxxx.local doesn't work).
+  - platform: wifi_info
+    ip_address:
+      name: "IP address"
+      web_server: {sorting_group_id: group_device, sorting_weight: 20}
+
+# -----------------------------------------------------------------------------
+#  Diagnostics
+# -----------------------------------------------------------------------------
+
+sensor:
+  - platform: wifi_signal
+    name: "WiFi signal"
+    entity_category: diagnostic
+    update_interval: 60s
+    web_server: {sorting_group_id: group_device, sorting_weight: 10}

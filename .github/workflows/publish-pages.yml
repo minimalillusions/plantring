@@ -1,0 +1,152 @@
+name: Publish Pages
+
+# Builds the firmware from main and publishes the web installer on GitHub Pages:
+#   https://minimalillusions.github.io/plantring/                        installer page (static/)
+#   https://minimalillusions.github.io/plantring/firmware/manifest.json  manifest for ESP Web Tools
+#                                                                   and for the update check
+#                                                                   built into the firmware
+# Runs on every push to main (documentation-only changes excepted), after every
+# successful "Release" run (so the manifest links the new release notes) and on
+# demand from the Actions tab.
+#
+# One-time setup: Settings > Pages > Build and deployment > Source: "GitHub Actions".
+# Deployments only ever run from main, so the github-pages environment needs no
+# extra branch or tag rules.
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+  workflow_run:
+    workflows:
+      - Release
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions: {}
+
+# A newer run cancels an older one, so an older build can never overwrite a newer site.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  firmware:
+    name: Firmware
+    # Skip when the Release run that triggered us failed; other events always run.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/firmware.yml
+
+  site:
+    name: Assemble site
+    needs: firmware
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read  # checkout and reading release notes
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download firmware
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          path: build
+          merge-multiple: true
+
+      - name: Assemble site
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PROJECT_VERSION: ${{ needs.firmware.outputs.version }}
+        run: |
+          set -euo pipefail
+          mapfile -t manifests < <(find build -name manifest.json)
+          if [[ ${#manifests[@]} -ne 1 ]]; then
+            echo "::error::Expected exactly one manifest.json in the firmware artifact, found ${#manifests[@]}."
+            exit 1
+          fi
+          manifest="${manifests[0]}"
+          src=$(dirname "${manifest}")
+
+          # Installer page, with the firmware in firmware/ next to it.
+          mkdir -p _site/firmware
+          cp -R static/. _site/
+          cp "${src}"/*.factory.bin "${src}"/*.ota.bin _site/firmware/
+          if ! grep -q 'manifest="firmware/manifest.json"' _site/index.html; then
+            echo "::error file=static/index.html::The install button must use manifest=\"firmware/manifest.json\"."
+            exit 1
+          fi
+
+          # The version the firmware actually reports, straight from the build.
+          version=$(jq -r '.version' "${manifest}")
+          if [[ "${version}" != "${PROJECT_VERSION}" ]]; then
+            echo "::warning::The firmware reports version ${version}, but project_version is ${PROJECT_VERSION}."
+          fi
+
+          # Release notes for the update check: those of the published release
+          # tagged v<version> or <version>, otherwise a link to all releases.
+          notes="PlantRing firmware ${version}"
+          url="https://github.com/${GH_REPO}/releases"
+          for tag in "v${version}" "${version}"; do
+            if release=$(gh release view "${tag}" --json body,url,isDraft 2>/dev/null) &&
+              [[ $(jq -r '.isDraft' <<< "${release}") == "false" ]]; then
+              url=$(jq -r '.url' <<< "${release}")
+              body=$(jq -r '.body // ""' <<< "${release}")
+              if [[ -n "${body}" ]]; then
+                notes="${body}"
+              fi
+              echo "Linking the release notes of ${tag}"
+              break
+            fi
+          done
+          jq --arg notes "${notes}" --arg url "${url}" \
+            '.builds[].ota |= (.summary = $notes | .release_url = $url)' \
+            "${manifest}" > _site/firmware/manifest.json
+
+          # Every file the manifest points to must be published next to it.
+          jq -e '(.name | type == "string") and (.version | type == "string") and (.builds | length > 0)' \
+            _site/firmware/manifest.json > /dev/null
+          for path in $(jq -r '.builds[] | (.parts[]?.path, .ota.path)' _site/firmware/manifest.json); do
+            if [[ ! -f "_site/firmware/${path}" ]]; then
+              echo "::error::manifest.json points to ${path}, which is missing."
+              exit 1
+            fi
+          done
+          echo "Firmware ${version}. Published files:"
+          find _site -type f | sort
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
+        with:
+          path: _site
+
+  deploy:
+    name: Deploy
+    needs: site
+    # Only main is ever deployed (push, workflow_run and manual runs on main).
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Set up Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6.0.0
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5.0.1

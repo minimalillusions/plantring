@@ -1,0 +1,11 @@
+# ESPHome build cache (created next to the YAML files when you compile locally)
+.esphome/
+
+# Local secrets (WiFi credentials etc.). Never commit this file.
+secrets.yaml
+
+# Python virtual environment, if you run ESPHome from a venv
+.venv/
+
+# Firmware images. CI builds them and publishes them to GitHub Releases and GitHub Pages.
+*.bin

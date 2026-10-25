@@ -1,0 +1,60 @@
+# =============================================================================
+#  PlantRing - factory firmware
+#  https://github.com/minimalillusions/plantring
+#
+#  This is what the web installer flashes onto a new ring. It contains
+#  everything from plantring.yaml plus what a brand-new device needs:
+#    - WiFi setup over USB right after flashing (Improv Serial)
+#    - WiFi setup over Bluetooth, e.g. with the Home Assistant app (Improv BLE)
+#    - "Take control" in the ESPHome Device Builder (called "Adopt" in
+#      older versions)
+#    - firmware updates from GitHub: the "Firmware" entry shows when a new
+#      version is out; install it from Home Assistant or with the web
+#      installer's Update button (the ring's own web page cannot install it)
+#  The fallback hotspot and its WiFi setup page (captive portal) are already
+#  part of plantring.yaml, so they stay available after taking control.
+#
+#  GitHub Actions builds this file; you normally don't need to compile it
+#  yourself. The firmware version comes from "project_version" in
+#  plantring.yaml. Structure follows the official esphome-project-template.
+# =============================================================================
+
+packages:
+  # Everything that makes the ring a PlantRing.
+  plantring: !include plantring.yaml
+
+esphome:
+  # "improv_ble" below needs ESPHome 2026.10.0 or newer.
+  min_version: 2026.10.0
+
+# Lets the ESPHome Device Builder take control of the ring ("Take control",
+# formerly "Adopt"). That creates a small config that pulls plantring.yaml
+# from GitHub. From then on you build your
+# own firmware (with your own changes) and update it from the Device Builder.
+dashboard_import:
+  package_import_url: github://minimalillusions/plantring/plantring.yaml@main
+
+# WiFi setup over USB: the web installer asks for your WiFi right after
+# flashing and then shows a link to the ring's web page.
+improv_serial:
+
+# WiFi setup over Bluetooth Low Energy. "authorizer: none" means no button
+# press is needed to confirm. (Called "esp32_improv" before ESPHome 2026.10.)
+improv_ble:
+  authorizer: none
+
+# Firmware updates from GitHub Pages.
+http_request:
+  # Check the server's HTTPS certificate (uses the ESP-IDF certificate bundle).
+  verify_ssl: true
+
+ota:
+  - platform: http_request
+
+# Checks GitHub Pages every 6 hours and reports a newer firmware as an update
+# (installable from Home Assistant or via the web installer).
+update:
+  - platform: http_request
+    name: "Firmware"
+    source: https://minimalillusions.github.io/plantring/firmware/manifest.json
+    web_server: {sorting_group_id: group_device, sorting_weight: 30}

@@ -1,0 +1,13 @@
+# Keeps the commit-pinned GitHub Actions and ESPHome shared workflows up to date
+# with one grouped pull request per month. The ESPHome version itself is set in
+# .github/workflows/firmware.yml (esphome-version) and is updated by hand.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      github-actions:
+        patterns:
+          - "*"

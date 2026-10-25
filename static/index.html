@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlantRing — Grow Light Installer</title>
+  <meta name="description" content="Install the PlantRing grow light firmware on an ESP32-C3 straight from your browser: plug in the board, click Install, enter your WiFi.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f6f2">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f1310">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="PlantRing — Grow Light Installer">
+  <meta property="og:description" content="Install the PlantRing grow light firmware on an ESP32-C3 straight from your browser.">
+  <meta property="og:url" content="https://minimalillusions.github.io/plantring/">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Ccircle%20cx='32'%20cy='32'%20r='24'%20fill='none'%20stroke='%23c800ff'%20stroke-width='7'%20stroke-dasharray='4.28%202'/%3E%3Cpath%20d='M32%2020C40%2025%2040%2039%2032%2044C24%2039%2024%2025%2032%2020Z'%20fill='%232c6a48'%20transform='rotate(35%2032%2032)'/%3E%3C/svg%3E">
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f5f6f2;
+      --surface: #ffffff;
+      --surface-2: #eef1eb;
+      --text: #17201a;
+      --muted: #55615a;
+      --border: #d4dad3;
+      --accent: #2c6a48;
+      --accent-hover: #22573a;
+      --on-accent: #ffffff;
+      --note: #b26b00;
+      --veg: #c800ff;    /* Preset: Vegetative, RGB 200, 0, 255 */
+      --bloom: #ff0078;  /* Preset: Bloom, RGB 255, 0, 120 */
+      --radius: 2px;
+      --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1310;
+        --surface: #161c18;
+        --surface-2: #1d241f;
+        --text: #e3e9e4;
+        --muted: #9ca8a0;
+        --border: #2c3530;
+        --accent: #7bd19e;
+        --accent-hover: #97ddb4;
+        --on-accent: #0b1a11;
+        --note: #e3b25a;
+      }
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+
+    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 1rem/1.6 var(--font);
+    }
+
+    a { color: var(--accent); text-underline-offset: 0.15em; }
+    a:hover { text-decoration-thickness: 2px; }
+    :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+    .wrap {
+      width: 100%;
+      max-width: 46rem;
+      margin-inline: auto;
+      padding-inline: 16px;
+    }
+
+    .hero { padding-top: 56px; }
+
+    .mark { display: block; width: 64px; height: 64px; margin: 0 0 24px; }
+    .mark .v { fill: var(--veg); }
+    .mark .b { fill: var(--bloom); }
+    .mark .leaf { fill: var(--accent); }
+    .mark .rib { fill: none; stroke: var(--bg); stroke-width: 1.4; }
+
+    h1 {
+      margin: 0 0 16px;
+      font-size: clamp(1.75rem, 1.25rem + 2.2vw, 2.5rem);
+      line-height: 1.15;
+      letter-spacing: -0.015em;
+      text-wrap: balance;
+    }
+
+    h2 { margin: 0 0 16px; font-size: 1.25rem; line-height: 1.3; }
+
+    .lead { margin: 0; font-size: 1.0625rem; max-width: 42rem; }
+
+    main { padding-top: 32px; }
+
+    section + section { margin-top: 32px; }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+    }
+
+    .needs { margin: 0 0 20px; color: var(--muted); }
+
+    .action {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px 20px;
+      padding-bottom: 24px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 48px;
+      padding: 0 32px;
+      border: 0;
+      border-radius: var(--radius);
+      background: var(--accent);
+      color: var(--on-accent);
+      font: inherit;
+      font-size: 1.0625rem;
+      font-weight: 650;
+      letter-spacing: 0.01em;
+      cursor: pointer;
+    }
+    .btn:hover { background: var(--accent-hover); }
+    .btn:active { transform: translateY(1px); }
+
+    /* Until ESP Web Tools has loaded, show only the Install button. */
+    esp-web-install-button:not(:defined) [slot="unsupported"],
+    esp-web-install-button:not(:defined) [slot="not-allowed"] { display: none; }
+
+    .notice {
+      margin: 0;
+      padding: 12px 16px;
+      background: var(--surface-2);
+      border: 1px solid var(--note);
+      border-left-width: 4px;
+      border-radius: var(--radius);
+    }
+
+    .fw { margin: 0; color: var(--muted); font-size: 0.9375rem; }
+    .fw strong { color: var(--text); font-family: var(--mono); font-weight: 600; }
+
+    .steps { list-style: none; counter-reset: step; margin: 0; padding: 0; }
+    .steps li {
+      counter-increment: step;
+      position: relative;
+      min-height: 32px;
+      padding-left: 48px;
+    }
+    .steps li + li { margin-top: 16px; }
+    .steps li::before {
+      content: counter(step);
+      position: absolute;
+      top: -2px;
+      left: 0;
+      display: grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .hint { display: block; margin-top: 4px; color: var(--muted); font-size: 0.9375rem; }
+
+    .facts { margin: 0; }
+    .facts div + div { margin-top: 16px; }
+    .facts dt { font-weight: 650; }
+    .facts dd { margin: 2px 0 0; }
+
+    .trouble { border-top: 4px solid var(--note); }
+
+    code, kbd {
+      padding: 0.1em 0.35em;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-family: var(--mono);
+      font-size: 0.875em;
+      overflow-wrap: anywhere;
+    }
+    kbd { font-weight: 600; border-bottom-width: 2px; }
+
+    .foot {
+      margin-top: 48px;
+      padding: 24px 0 48px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.9375rem;
+    }
+    .foot p { margin: 0 0 8px; }
+
+    /* ESP Web Tools dialogs: PlantRing green and square corners (dialog, buttons and
+       the close button's hover area). The dialogs keep their own light theme, so they
+       use the light-theme accent. */
+    ewt-install-dialog,
+    ewt-no-port-picked-dialog {
+      --md-sys-color-primary: #2c6a48;
+      --md-sys-color-on-primary: #ffffff;
+      --md-dialog-container-shape: 4px;
+      --md-text-button-container-shape: 2px;
+      --md-icon-button-state-layer-shape: 2px;
+    }
+
+    @media (max-width: 480px) {
+      .hero { padding-top: 40px; }
+      .panel { padding: 20px 16px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .btn:active { transform: none; }
+    }
+  </style>
+  <script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
+</head>
+<body>
+  <header class="wrap hero">
+    <svg class="mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+      <defs>
+        <rect id="led" x="29.5" y="5" width="5" height="5"/>
+      </defs>
+      <g>
+        <use href="#led" class="v"/>
+        <use href="#led" class="b" transform="rotate(15 32 32)"/>
+        <use href="#led" class="v" transform="rotate(30 32 32)"/>
+        <use href="#led" class="b" transform="rotate(45 32 32)"/>
+        <use href="#led" class="v" transform="rotate(60 32 32)"/>
+        <use href="#led" class="b" transform="rotate(75 32 32)"/>
+        <use href="#led" class="v" transform="rotate(90 32 32)"/>
+        <use href="#led" class="b" transform="rotate(105 32 32)"/>
+        <use href="#led" class="v" transform="rotate(120 32 32)"/>
+        <use href="#led" class="b" transform="rotate(135 32 32)"/>
+        <use href="#led" class="v" transform="rotate(150 32 32)"/>
+        <use href="#led" class="b" transform="rotate(165 32 32)"/>
+        <use href="#led" class="v" transform="rotate(180 32 32)"/>
+        <use href="#led" class="b" transform="rotate(195 32 32)"/>
+        <use href="#led" class="v" transform="rotate(210 32 32)"/>
+        <use href="#led" class="b" transform="rotate(225 32 32)"/>
+        <use href="#led" class="v" transform="rotate(240 32 32)"/>
+        <use href="#led" class="b" transform="rotate(255 32 32)"/>
+        <use href="#led" class="v" transform="rotate(270 32 32)"/>
+        <use href="#led" class="b" transform="rotate(285 32 32)"/>
+        <use href="#led" class="v" transform="rotate(300 32 32)"/>
+        <use href="#led" class="b" transform="rotate(315 32 32)"/>
+        <use href="#led" class="v" transform="rotate(330 32 32)"/>
+        <use href="#led" class="b" transform="rotate(345 32 32)"/>
+      </g>
+      <g transform="rotate(35 32 32)">
+        <path class="leaf" d="M32 20C40 25 40 39 32 44C24 39 24 25 32 20Z"/>
+        <path class="rib" d="M32 25V44"/>
+      </g>
+    </svg>
+    <h1>PlantRing — Grow Light Installer</h1>
+    <p class="lead">PlantRing is a small grow light for houseplants: a ring of 24 LEDs on an ESP32-C3 SuperMini, running ESPHome. It works on its own, with its own web page and a daily light schedule, and Home Assistant picks it up automatically if you use it. This page installs the firmware straight from your browser, with nothing to download and nothing to compile.</p>
+  </header>
+
+  <main class="wrap">
+    <section class="panel" aria-labelledby="install-title">
+      <h2 id="install-title">Install the firmware</h2>
+      <p class="needs">You need the ESP32-C3 SuperMini (ring connected or not), a USB data cable, a computer with Chrome or Edge, and a 2.4 GHz WiFi network.</p>
+
+      <div class="action">
+        <esp-web-install-button manifest="firmware/manifest.json">
+          <button slot="activate" type="button" class="btn">Install</button>
+          <p slot="unsupported" class="notice">This browser can’t talk to USB devices, so it can’t install the firmware. Open this page on a computer in <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong> (Firefox 151 or newer works too). Phones and tablets are not supported.</p>
+          <p slot="not-allowed" class="notice">Installing needs a secure connection. Open <a href="https://minimalillusions.github.io/plantring/">https://minimalillusions.github.io/plantring/</a> instead.</p>
+        </esp-web-install-button>
+        <p class="fw" id="fw-line" hidden>Firmware version <strong id="fw-version"></strong></p>
+      </div>
+      <noscript><p class="notice">The installer needs JavaScript. Please allow it for this page.</p></noscript>
+
+      <ol class="steps">
+        <li>Open this page in <strong>Chrome</strong> or <strong>Edge</strong> on a computer.</li>
+        <li>Plug the ESP32-C3 into the computer with a USB <strong>data</strong> cable.</li>
+        <li>Click <strong>Install</strong>, pick the port and confirm with <strong>Install</strong>. Writing the firmware takes a minute or two.
+          <span class="hint">Not sure which port? Unplug the board and see which entry disappears.</span></li>
+        <li>Choose your WiFi and enter its password when asked. It has to be a <strong>2.4 GHz</strong> network.</li>
+        <li>Done. Click <strong>Visit Device</strong> to open the lamp’s own web page. If you use Home Assistant, it finds the lamp automatically.</li>
+      </ol>
+    </section>
+
+    <section aria-labelledby="after-title">
+      <h2 id="after-title">After installing</h2>
+      <dl class="facts">
+        <div>
+          <dt>Web page</dt>
+          <dd>Open <code>http://plantring-xxxxxx.local</code> (the last six characters differ for every lamp) or the lamp’s IP address from your router, and bookmark it.</dd>
+        </div>
+        <div>
+          <dt>Schedule</dt>
+          <dd>The light goes on at 07:00 and off at 21:00, time zone Europe/Berlin. Change <strong>Timezone</strong>, <strong>Lights on</strong> and <strong>Lights off</strong> on the lamp’s page, or turn <strong>Schedule</strong> off to switch by hand. Anything you switch by hand stays until the next scheduled change.</dd>
+        </div>
+        <div>
+          <dt>Presets</dt>
+          <dd><strong>Preset: Vegetative</strong> (blue-rich), <strong>Preset: Bloom</strong> (red-rich) and <strong>Preset: Full spectrum</strong> (white) change the color and keep the brightness.</dd>
+        </div>
+        <div>
+          <dt>Home Assistant</dt>
+          <dd>The lamp shows up under <strong>Settings → Devices &amp; services</strong> as a discovered ESPHome device and can be added with one click.</dd>
+        </div>
+        <div>
+          <dt>Updates</dt>
+          <dd>When a new firmware version is out, the <strong>Firmware</strong> entry on the lamp’s page says so. Install it from Home Assistant (no cable needed), or connect the lamp to your computer, click <strong>Install</strong> on this page and choose <strong>Update</strong>. Your WiFi and settings are kept.</dd>
+        </div>
+      </dl>
+    </section>
+
+    <section class="panel trouble" aria-labelledby="trouble-title">
+      <h2 id="trouble-title">Troubleshooting</h2>
+      <dl class="facts">
+        <div>
+          <dt>No port shows up</dt>
+          <dd>The USB cable can probably only charge. Try a cable you know carries data. The ESP32-C3 SuperMini needs no driver on Windows 10/11, macOS or Linux; boards with a separate CH340 or CP210x USB chip need that chip’s driver.</dd>
+        </div>
+        <div>
+          <dt>The first install fails</dt>
+          <dd>Start the board in download mode: unplug it, hold <kbd>BOOT</kbd>, plug it back in, release <kbd>BOOT</kbd> and click <strong>Install</strong> again. When it is done, press <kbd>RESET</kbd> or unplug and replug the board once.</dd>
+        </div>
+        <div>
+          <dt>WiFi won’t connect</dt>
+          <dd>The ESP32-C3 only works with <strong>2.4 GHz</strong> WiFi; 5 GHz networks are invisible to it. Make sure 2.4 GHz is switched on in your router, check the password, and keep the lamp near the router for the first setup.</dd>
+        </div>
+        <div>
+          <dt>The WiFi question never came</dt>
+          <dd>Wait a minute: the lamp then opens its own WiFi hotspot, named after the lamp (it starts with “plantring”). Connect to it with your phone and a setup page opens where you pick your WiFi. If it doesn’t open, go to <code>http://192.168.4.1</code>.</dd>
+        </div>
+        <div>
+          <dt>The board restarts when the light comes on</dt>
+          <dd>A computer’s USB port may not supply enough current for the ring. Run the lamp from a USB charger with at least 1 A (2 A recommended).</dd>
+        </div>
+      </dl>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap">
+      <p>PlantRing is open source under the MIT license. Parts list, wiring and source code: <a href="https://github.com/minimalillusions/plantring">github.com/minimalillusions/plantring</a>.</p>
+      <p>Installer powered by <a href="https://esphome.io/">ESPHome</a> and <a href="https://esphome.github.io/esp-web-tools/">ESP Web Tools</a>.</p>
+    </div>
+  </footer>
+
+  <script type="module">
+    // Show which firmware version the Install button will put on the board.
+    fetch("firmware/manifest.json", { cache: "no-cache" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((manifest) => {
+        if (manifest && typeof manifest.version === "string") {
+          document.getElementById("fw-version").textContent = manifest.version;
+          document.getElementById("fw-line").hidden = false;
+        }
+      })
+      .catch(() => {});
+  </script>
+</body>
+</html>
